@@ -7,8 +7,15 @@ const authRoutes = require("./routes/authRoutes");
 dotenv.config();
 const app = express();
 
-// Middleware
-app.use(cors());
+// ✅ Secure CORS setup (Frontend at 3000, Backend at 5000)
+const corsOptions = {
+    origin: ["http://localhost:3000", "https://your-production-domain.com"], // Allow frontend
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
+    credentials: true, // Allow cookies if needed
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use(express.static("public")); // Serve frontend files
 
@@ -16,7 +23,9 @@ app.use(express.static("public")); // Serve frontend files
 app.use("/api/auth", authRoutes);
 
 // Start Server after DB sync
-sequelize.sync().then(() => {
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}).catch(err => console.error("DB Sync Error:", err));
+sequelize.sync()
+    .then(() => {
+        const PORT = process.env.PORT || 5000; // ✅ Your backend runs on 5000
+        app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    })
+    .catch(err => console.error("DB Sync Error:", err));

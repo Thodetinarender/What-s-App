@@ -13,23 +13,23 @@ router.post("/signup", async (req, res) => {
     }
 
     try {
-        // Check if user already exists using Sequelize's findOne method
+        // Check if user already exists
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
-            return res.status(400).json({ error: "Email already in use!" });
+            return res.status(400).json({ error: "User already exists, Please Login" });
         }
 
         // Hash Password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create new user using Sequelize's create() method
+        // Create new user
         const newUser = await User.create({ name, email, phone, password: hashedPassword });
 
-        res.status(201).json({ message: "Signup successful!", user: newUser });
+        res.status(201).json({ message: "Signup successful!" }); // ✅ Don't send user data
     } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ error: "Server error" });
+        console.error("Signup Error:", error);
+        res.status(500).json({ error: "Server error! Please try again." });
     }
 });
 
