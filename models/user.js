@@ -1,0 +1,37 @@
+const Sequelize = require('sequelize');
+const sequelize = require('../utils/database');
+
+// Define User Model
+const User = sequelize.define("user", {
+    id: {
+        type: Sequelize.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+    },
+    name: {
+        type: Sequelize.STRING,
+        allowNull: false,
+    },
+    email: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+    },
+    phone: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+    },
+    password: {
+        type: Sequelize.STRING,
+        allowNull: false,
+    }
+}, { timestamps: true });
+
+// Sync Model with Database
+(async () => {
+    await sequelize.sync();
+    console.log("User table synced!");
+})();
+
+module.exports = User;
