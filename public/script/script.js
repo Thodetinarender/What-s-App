@@ -57,11 +57,13 @@ document.getElementById("loginForm")?.addEventListener("submit", async function 
         if (response.ok) {
             alert("Login successful! ✅");
 
-            // ✅ Store JWT token in localStorage
+             // ✅ Store JWT token & username in localStorage
             localStorage.setItem("token", data.token);
+            localStorage.setItem("username", data.username); // Save username
 
-            // ✅ Redirect to home/dashboard
-            window.location.href = "/html/home.html"; 
+             // ✅ Redirect to chat page
+            window.location.href = "/html/chat.html";
+ 
         } else {
             alert(data.error || "Invalid credentials! ❌");
         }
