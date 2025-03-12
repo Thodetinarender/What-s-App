@@ -56,7 +56,12 @@ document.getElementById("loginForm")?.addEventListener("submit", async function 
 
         if (response.ok) {
             alert("Login successful! ✅");
-            window.location.href = "/html/home.html"; // Redirect to home/dashboard
+
+            // ✅ Store JWT token in localStorage
+            localStorage.setItem("token", data.token);
+
+            // ✅ Redirect to home/dashboard
+            window.location.href = "/html/home.html"; 
         } else {
             alert(data.error || "Invalid credentials! ❌");
         }

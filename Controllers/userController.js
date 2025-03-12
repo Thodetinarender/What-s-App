@@ -1,16 +1,12 @@
-const express = require("express");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken"); // ✅ JWT for authentication
+const jwt = require("jsonwebtoken");
 const User = require("../models/user");
-
-const router = express.Router();
-
 const dotenv = require("dotenv");
 
 dotenv.config(); // Load environment variables
 
-// Signup Route
-router.post("/signup", async (req, res) => {
+// ✅ Signup Controller
+const signup = async (req, res) => {
     const { name, email, phone, password } = req.body;
 
     if (!name || !email || !phone || !password) {
@@ -29,17 +25,17 @@ router.post("/signup", async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
 
         // Create new user
-        const newUser = await User.create({ name, email, phone, password: hashedPassword });
+        await User.create({ name, email, phone, password: hashedPassword });
 
-        res.status(201).json({ message: "Signup successful!" }); // ✅ Don't send user data
+        res.status(201).json({ message: "Signup successful!" });
     } catch (error) {
         console.error("Signup Error:", error);
         res.status(500).json({ error: "Server error! Please try again." });
     }
-});
+};
 
-// Login Route
-router.post("/login", async (req, res) => {
+// ✅ Login Controller
+const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -50,16 +46,16 @@ router.post("/login", async (req, res) => {
         // Check if user exists
         const user = await User.findOne({ where: { email } });
         if (!user) {
-            return res.status(400).json({ error: "Invalid email or password!" });
+            return res.status(404).json({ error: "User not found!" }); // 🔹 404 if user doesn't exist
         }
 
         // Check password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).json({ error: "Invalid email or password!" });
+            return res.status(401).json({ error: "Invalid email or password!" }); // 🔹 401 for wrong password
         }
 
-        // Generate JWT Token
+        // Generate JWT Token (encrypting user ID)
         const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
         res.status(200).json({ message: "Login successful!", token });
@@ -67,7 +63,7 @@ router.post("/login", async (req, res) => {
         console.error("Login Error:", error);
         res.status(500).json({ error: "Server error! Please try again." });
     }
-});
+};
 
-
-module.exports = router;
+// Export the controllers
+module.exports = { signup, login };

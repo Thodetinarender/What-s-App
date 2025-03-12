@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const sequelize = require("./utils/database.js"); // Import Sequelize connection
-const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 dotenv.config();
 const app = express();
@@ -20,7 +20,7 @@ app.use(express.json());
 app.use(express.static("public")); // Serve frontend files
 
 // Routes
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", userRoutes);
 
 // Start Server after DB sync
 sequelize.sync()
