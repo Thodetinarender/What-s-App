@@ -1,11 +1,16 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
 const sequelize = require("./utils/database.js"); // Import Sequelize connection
 const userRoutes = require("./routes/userRoutes");
-const { WebSocketServer } = require("ws"); // ✅ Import WebSocket
+const chatRoutes = require("./routes/chatRoutes");
+const { WebSocketServer, WebSocket } = require("ws"); // Import WebSocket
+const chatController = require("./Controllers/chatController"); // Import chat controller
 
 dotenv.config();
+const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key"; // Secret key for JWT
+
 const app = express();
 
 // ✅ Secure CORS setup (Frontend at 3000, Backend at 5000)
@@ -19,12 +24,13 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static("public")); // Serve frontend files
 
-// Routes
+// ✅ Define Routes
 app.use("/api/auth", userRoutes);
+app.use("/api/chat", chatRoutes);
 
 // ✅ Start Express Server
 const server = app.listen(5000, () => {
-    console.log(`Server running on port 5000`);
+    console.log(`🚀 Server running on port 5000`);
 });
 
 // ✅ Initialize WebSocket Server
@@ -32,34 +38,76 @@ const wss = new WebSocketServer({ server });
 let onlineUsers = []; // Store active users
 
 // ✅ WebSocket Connection Handling
-wss.on("connection", (ws) => {
-    console.log("New WebSocket connection established!");
+wss.on("connection", (ws, req) => {
+    const urlParams = new URLSearchParams(req.url.split("?")[1]);
+    const token = urlParams.get("token");
 
-    ws.on("message", (message) => {
-        const data = JSON.parse(message);
+    if (!token) {
+        console.log("❌ No token provided, closing connection.");
+        ws.close();
+        return;
+    }
 
-        if (data.type === "newUser") {
-            if (!onlineUsers.includes(data.username)) {
-                onlineUsers.push(data.username);
-            }
-            broadcast({ type: "userList", users: onlineUsers });
-        } else if (data.type === "message") {
-            broadcast({ type: "message", username: data.username, text: data.text });
+    try {
+        const decoded = jwt.verify(token, SECRET_KEY);
+        ws.userId = Number(decoded.id); // Ensure it's a number
+        ws.username = decoded.username; // ✅ Store username in ws object
+
+        if (!onlineUsers.includes(ws.username)) {
+            onlineUsers.push(ws.username);
         }
-    });
+        console.log(`✅ User connected: ${ws.username}`);
 
-    ws.on("close", () => {
-        console.log("User disconnected");
-        onlineUsers = onlineUsers.filter(user => user !== ws.username);
+        // ✅ Update user list
         broadcast({ type: "userList", users: onlineUsers });
-    });
+
+        // ✅ Handle incoming messages
+        ws.on("message", async (message) => {
+            try {
+                const data = JSON.parse(message);
+
+                if (data.type === "message") {
+                    console.log(`📩 Message from ${ws.username}: ${data.text}`);
+                    
+                    // ✅ Save message to the database
+                    const savedMessage = await chatController.saveMessage(ws.userId, data.text);
+                    if (savedMessage) {
+                        // ✅ Broadcast only if message is saved
+                        broadcast({ type: "message", username: ws.username, text: data.text });
+                    } else {
+                        console.error("❌ Failed to save message to the database.");
+                    }
+                    
+                }
+            } catch (error) {
+                console.error("⚠️ Error processing message:", error);
+            }
+        });
+
+        ws.on("close", () => {
+            console.log(`🔴 User disconnected: ${ws.username}`);
+            onlineUsers = onlineUsers.filter(user => user !== ws.username);
+            broadcast({ type: "userList", users: onlineUsers });
+        });
+
+    } catch (error) {
+        console.log("❌ Invalid token, closing connection.");
+        ws.close();
+    }
 });
 
-// ✅ Broadcast messages to all clients
+// ✅ Function to Broadcast messages to all clients
 function broadcast(data) {
     wss.clients.forEach(client => {
-        if (client.readyState === 1) {
+        if (client.readyState === WebSocket.OPEN) { // ✅ Use WebSocket.OPEN constant
             client.send(JSON.stringify(data));
         }
     });
 }
+
+// ✅ Graceful Shutdown
+process.on("SIGINT", () => {
+    console.log("⚠️ Shutting down WebSocket server...");
+    wss.close();
+    process.exit();
+});
