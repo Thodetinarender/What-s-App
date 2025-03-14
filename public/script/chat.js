@@ -95,6 +95,10 @@ async function loadChatHistory() {
             throw new Error("Invalid chat history response");
         }
 
+        // ✅ Clear previous messages to avoid duplicates
+        const chatWindow = document.getElementById("messages");
+        chatWindow.innerHTML = "";
+
         data.chats.forEach(chat => {
             displayMessage(chat.user.name, chat.message);
         });
@@ -103,9 +107,21 @@ async function loadChatHistory() {
     }
 }
 
+
+// ✅ Call API every 1 second to fetch new messages
+setInterval(() => {
+    loadChatHistory();
+}, 1000); // ✅ Polling every 1 second
+
 // ✅ Function to Display Messages in Chat Window
 function displayMessage(sender, message) {
     const chatWindow = document.getElementById("messages");
+
+     // ✅ Check if the message already exists to avoid duplicates
+     if ([...chatWindow.children].some(msg => msg.innerHTML === `<strong>${sender}:</strong> ${message}`)) {
+        return;
+    }
+    
     const msgDiv = document.createElement("div");
     msgDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
     chatWindow.appendChild(msgDiv);
