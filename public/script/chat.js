@@ -25,11 +25,11 @@ socket.onopen = () => {
 socket.onmessage = (event) => {
     try {
         const data = JSON.parse(event.data);
-
-        if (data.type === "userList") {
-            updateUserList(data.users);
-        } else if (data.type === "message") {
+        if (data.type === "message") {
+            // ✅ Immediately display new messages without refresh
             displayMessage(data.username, data.text);
+        } else if (data.type === "userList") {
+            updateUserList(data.users);
         }
     } catch (error) {
         console.error("❌ Error parsing message:", error);

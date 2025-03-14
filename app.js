@@ -72,8 +72,14 @@ wss.on("connection", (ws, req) => {
                     // ✅ Save message to the database
                     const savedMessage = await chatController.saveMessage(ws.userId, data.text);
                     if (savedMessage) {
-                        // ✅ Broadcast only if message is saved
-                        broadcast({ type: "message", username: ws.username, text: data.text });
+                         // ✅ Broadcast message to all clients
+                        const chatMessage = {
+                            type: "message",
+                            username: ws.username,
+                            text: data.text
+                        };
+        
+                        broadcast(chatMessage);
                     } else {
                         console.error("❌ Failed to save message to the database.");
                     }
