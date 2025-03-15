@@ -23,3 +23,62 @@ input, button {
     padding: 8px;
     margin: 5px;
 }
+
+
+
+/* Chat Messages */
+.chat-message {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+}
+
+/* Sent Messages (Align Right) */
+.chat-message.sent {
+    justify-content: flex-end;
+}
+
+/* Received Messages (Align Left) */
+.chat-message.received {
+    justify-content: flex-start;
+}
+
+/* Profile Circle */
+.profile-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #007bff;
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 5px;
+}
+
+/* Message Bubble */
+.message-bubble {
+    max-width: 60%;
+    padding: 10px 15px;
+    border-radius: 15px;
+    font-size: 16px;
+    word-wrap: break-word;
+}
+
+/* Sent Message Bubble */
+.sent .message-bubble {
+    background-color: hsl(145, 100%, 50%);
+    color: white;
+    text-align: right;
+    border-top-right-radius: 5px;
+}
+
+/* Received Message Bubble */
+.received .message-bubble {
+    background-color: hsl(135, 89%, 51%);
+    color: black;
+    text-align: left;
+    border-top-left-radius: 5px;
+}

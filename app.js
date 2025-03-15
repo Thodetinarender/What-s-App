@@ -9,7 +9,7 @@ const { WebSocketServer, WebSocket } = require("ws"); // Import WebSocket
 const chatController = require("./Controllers/chatController"); // Import chat controller
 
 dotenv.config();
-const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key"; // Secret key for JWT
+const SECRET_KEY = process.env.JWT_SECRET; // Secret key for JWT
 
 const app = express();
 
@@ -37,7 +37,7 @@ const server = app.listen(5000, () => {
 const wss = new WebSocketServer({ server });
 let onlineUsers = []; // Store active users
 
-// ✅ WebSocket Connection Handling
+/// ✅ WebSocket Connection Handling
 wss.on("connection", (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split("?")[1]);
     const token = urlParams.get("token");
@@ -51,7 +51,7 @@ wss.on("connection", (ws, req) => {
     try {
         const decoded = jwt.verify(token, SECRET_KEY);
         ws.userId = Number(decoded.id); // Ensure it's a number
-        ws.username = decoded.username; // ✅ Store username in ws object
+        ws.username = decoded.username; // Store username in ws object
 
         if (!onlineUsers.includes(ws.username)) {
             onlineUsers.push(ws.username);
@@ -65,14 +65,19 @@ wss.on("connection", (ws, req) => {
         ws.on("message", async (message) => {
             try {
                 const data = JSON.parse(message);
-
+        
                 if (data.type === "message") {
                     console.log(`📩 Message from ${ws.username}: ${data.text}`);
                     
-                    // ✅ Save message to the database
+                    // Log userId before saving the message
+                    console.log("🧐 Debug: userId before saveMessage:", ws.userId);
+        
+                    // Call saveMessage and log the call
+                    console.log("🧐 Debug: Calling saveMessage with userId:", ws.userId);
                     const savedMessage = await chatController.saveMessage(ws.userId, data.text);
+                    
                     if (savedMessage) {
-                         // ✅ Broadcast message to all clients
+                        // ✅ Broadcast message to all clients
                         const chatMessage = {
                             type: "message",
                             username: ws.username,
@@ -83,13 +88,12 @@ wss.on("connection", (ws, req) => {
                     } else {
                         console.error("❌ Failed to save message to the database.");
                     }
-                    
                 }
             } catch (error) {
                 console.error("⚠️ Error processing message:", error);
             }
         });
-
+        
         ws.on("close", () => {
             console.log(`🔴 User disconnected: ${ws.username}`);
             onlineUsers = onlineUsers.filter(user => user !== ws.username);
