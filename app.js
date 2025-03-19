@@ -1,395 +1,186 @@
+const fs = require("fs");
+const path = require("path");
+
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
+const bodyParser = require("body-parser");
+const helmet = require("helmet");
+const morgan = require("morgan");
 const jwt = require("jsonwebtoken");
-require('./models');
-const userRoutes = require("./routes/userRoutes");
-const chatRoutes = require("./routes/chatRoutes");
-const groupRoutes = require("./routes/groupRoutes");
-const { WebSocketServer, WebSocket } = require("ws");
-const chatController = require("./Controllers/chatController");
+require("dotenv").config({ path: "../.env" });
 
-dotenv.config();
-const SECRET_KEY = process.env.JWT_SECRET;
-if (!SECRET_KEY) {
-    console.error("❌ JWT_SECRET is missing in .env");
-    process.exit(1);
-}
+const User = require("./models/user");
+const Message = require("./models/message");
+const Group = require("./models/group");
+const GroupUser = require("./models/groupUser");
+
+const sequelize = require("./utils/database");
+const adminRoutes = require("./routes/admin");
+const messageRoutes = require("./routes/message");
+const grpRoutes = require("./routes/group");
 
 const app = express();
+const server = require("http").createServer(app);
+const { Server } = require("socket.io"); // Import Socket.IO properly
 
-const corsOptions = {
-    origin: ["http://localhost:3000", "https://your-production-domain.com"],
-    methods: "GET,POST,PUT,DELETE",
-    allowedHeaders: "Content-Type,Authorization",
-    credentials: true,
-};
-app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.static("public"));
-
-app.use("/api/auth", userRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/group", groupRoutes);
-
-const server = app.listen(5000, () => {
-    console.log(`🚀 Server running on port 5000`);
-});
-
-// Initialize models and associations
-const { sequelize, User, Group, GroupChat, GroupMember } = require('./models/index');
-
-// Sync models
-sequelize.sync().then(() => {
-    console.log("Database synced!");
-}).catch(err => {
-    console.error("Error syncing database:", err);
-});
-
-const wss = new WebSocketServer({ server });
-let onlineUsers = {};
-
-wss.on("connection", (ws, req) => {
-    const queryString = req.url ? req.url.split("?")[1] : null;
-    const urlParams = queryString ? new URLSearchParams(queryString) : new URLSearchParams();
-    const token = urlParams.get("token");
-
-    if (!token) {
-        console.log("❌ No token provided, closing connection.");
-        ws.close();
-        return;
+// const io = new Server(server, {
+//     cors: {
+//         origin: "http://localhost:3001",
+//         methods: ["GET", "POST"], // ✅ Ensure correct array syntax
+//         credentials: true,
+//     }
+// });
+const io = new Server(server, {
+    cors: {
+        origin: ["http://localhost:3001", "http://localhost:3000"],
+        methods: ["GET", "POST"],
+        credentials: true,
+        allowedHeaders: ["Authorization"],
     }
+});
 
-    try {
-        const decoded = jwt.verify(token, SECRET_KEY);
-        ws.userId = Number(decoded.id);
-        ws.username = decoded.username;
 
-        onlineUsers[ws.username] = ws;
-        console.log(`✅ User connected: ${ws.username}`);
 
-        broadcast({ type: "userList", users: Object.keys(onlineUsers) });
 
-        ws.on("message", async (message) => {
-            try {
-                const data = JSON.parse(message);
-                if (!ws.userId) return console.error("❌ Missing userId, ignoring message.");
+const accessLogStream = fs.createWriteStream(
+    path.join(__dirname, "access.log"),
+    { flags: "a" }
+);
 
-                if (data.type === "message") {
-                    console.log(`📩 Message from ${ws.username}: ${data.text}`);
-                    const savedMessage = await chatController.saveMessage(ws.userId, data.text);
-                    if (savedMessage) {
-                        broadcast({
-                            type: "message",
-                            username: ws.username,
-                            text: data.text
-                        });
-                    }
-                } else if (data.type === "groupMessage") {
-                    console.log(`📩 Group message from ${ws.username} in group ${data.groupId}: ${data.text}`);
-                    const savedGroupMessage = await chatController.saveGroupMessage(ws.userId, data.groupId, data.text);
-                    if (savedGroupMessage) {
-                        broadcast({
-                            type: "groupMessage",
-                            username: ws.username,
-                            text: data.text,
-                            groupId: data.groupId
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error("⚠️ Error processing message:", error);
+app.use(
+    cors({
+        origin: ["http://localhost:3001", "http://localhost:3000"],
+        credentials: true,
+    })
+);
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json({ extended: false }));
+//app.use(helmet());
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            directives: {
+                "script-src": ["'self'", "'unsafe-inline'", "https://cdn.socket.io"],
+                "script-src-attr": ["'unsafe-inline'"], // ✅ Allows inline event handlers
+                "connect-src": ["'self'", "ws://localhost:3000", "http://localhost:3000"],
+            },
+        },
+    })
+);
+
+app.use(morgan("combined", { stream: accessLogStream }));
+
+app.use(express.static(path.join(__dirname, "public"))); // This should come first
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "html", "signup.html"));
+});
+
+app.get("/signup", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "html", "signup.html"));
+});
+
+app.get("/login", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "html", "login.html"));
+});
+
+app.get("/chat", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "html", "chat.html"));
+});
+
+
+app.use("/user", adminRoutes);
+app.use("/message", messageRoutes);
+app.use("/group", grpRoutes);
+
+// user to meesage relation
+User.hasMany(Message);
+Message.belongsTo(User);
+
+// message to group relation
+Group.hasMany(Message);
+Message.belongsTo(Group);
+
+// many to many relation of members and group
+User.belongsToMany(Group, { through: GroupUser });
+Group.belongsToMany(User, { through: GroupUser });
+
+// using socket
+const onlineUsers = [];
+io.use(function (socket, next) {
+    if (socket.handshake.query && socket.handshake.query.token) {
+        jwt.verify(
+            socket.handshake.query.token,
+            process.env.JWT_SECRET,
+            function (err, decoded) {
+                if (err) return next(new Error("Authentication error"));
+                socket.decoded = decoded;
+                next();
             }
-        });
-
-        ws.on("close", () => {
-            setTimeout(() => {
-                delete onlineUsers[ws.username];
-                console.log(`🔴 User disconnected: ${ws.username}`);
-                broadcast({ type: "userList", users: Object.keys(onlineUsers) });
-            }, 5000);
-        });
-
-    } catch (error) {
-        console.log("❌ Invalid token, closing connection.");
-        ws.close();
+        );
+    } else {
+        next(new Error("Authentication error"));
     }
-});
+}).on("connection", (socket) => {
+    console.log("A connection has been made");
+    // store user in users array as online
+    socket.on("online", (userId) => {
+        onlineUsers.push({ userId: userId, socketId: socket.id });
+    });
 
-function broadcast(data) {
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(data));
+    // add member to group
+    socket.on("add member", async (userId) => {
+        const target = onlineUsers.find((user) => user.userId === userId);
+
+        if (target !== undefined) {
+            const myGrpIds = await GroupUser.findAll({
+                attributes: ["groupId"],
+                where: { userId: userId },
+            });
+            const allGrps = [];
+            for (let i = 0; i < myGrpIds.length; i++) {
+                allGrps.push(myGrpIds[i].groupId);
+            }
+            const grps = await Group.findAll({
+                attributes: ["id", "name", "description"],
+                where: { id: allGrps },
+            });
+            console.log(target.socketId);
+            io.to(target.socketId).emit("grpData", grps);
         }
     });
-}
 
-process.on("SIGINT", () => {
-    console.log("⚠️ Shutting down WebSocket server...");
-    wss.close();
-    process.exit();
+    // make user join a room
+    socket.on("join", function (room) {
+        socket.join(room);
+    });
+
+    // broadcast the message to a room
+    // socket.on("send message", (msg, room) => {
+    //     io.in(room).emit("room message", msg);
+    // });
+    socket.on("send message", (msg, room) => {
+        console.log(`Message received in room ${room}: `, msg);
+        io.to(room).emit("receive message", msg, room);
+    });
+    
+
+    // on disconnection
+    socket.on("disconnect", () => {
+        console.log("A disconnection has been made");
+    });
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// const express = require("express");
-// const cors = require("cors");
-// const dotenv = require("dotenv");
-// const jwt = require("jsonwebtoken");
-// const userRoutes = require("./routes/userRoutes");
-// const chatRoutes = require("./routes/chatRoutes");
-// const groupRoutes = require("./routes/groupRoutes"); // Import group routes
-// const { WebSocketServer, WebSocket } = require("ws");
-// const chatController = require("./Controllers/chatController");
-
-// dotenv.config();
-// const SECRET_KEY = process.env.JWT_SECRET;
-// if (!SECRET_KEY) {
-//     console.error("❌ JWT_SECRET is missing in .env");
-//     process.exit(1);
-// }
-
-// const app = express();
-
-// const corsOptions = {
-//     origin: ["http://localhost:3000", "https://your-production-domain.com"],
-//     methods: "GET,POST,PUT,DELETE",
-//     allowedHeaders: "Content-Type,Authorization",
-//     credentials: true,
-// };
-// app.use(cors(corsOptions));
-// app.use(express.json());
-// app.use(express.static("public"));
-
-// app.use("/api/auth", userRoutes);
-// app.use("/api/chat", chatRoutes);
-// app.use("/api/group", groupRoutes); // Use group routes
-
-// const server = app.listen(5000, () => {
-//     console.log(`🚀 Server running on port 5000`);
-// });
-
-// const wss = new WebSocketServer({ server });
-// let onlineUsers = {};
-
-// wss.on("connection", (ws, req) => {
-//     const queryString = req.url ? req.url.split("?")[1] : null;
-//     const urlParams = queryString ? new URLSearchParams(queryString) : new URLSearchParams();
-//     const token = urlParams.get("token");
-
-//     if (!token) {
-//         console.log("❌ No token provided, closing connection.");
-//         ws.close();
-//         return;
-//     }
-
-//     try {
-//         const decoded = jwt.verify(token, SECRET_KEY);
-//         ws.userId = Number(decoded.id);
-//         ws.username = decoded.username;
-
-//         onlineUsers[ws.username] = ws;
-//         console.log(`✅ User connected: ${ws.username}`);
-
-//         broadcast({ type: "userList", users: Object.keys(onlineUsers) });
-
-//         ws.on("message", async (message) => {
-//             try {
-//                 const data = JSON.parse(message);
-//                 if (!ws.userId) return console.error("❌ Missing userId, ignoring message.");
-
-//                 if (data.type === "message") {
-//                     console.log(`📩 Message from ${ws.username}: ${data.text}`);
-//                     const savedMessage = await chatController.saveMessage(ws.userId, data.text);
-//                     if (savedMessage) {
-//                         broadcast({
-//                             type: "message",
-//                             username: ws.username,
-//                             text: data.text
-//                         });
-//                     }
-//                 } else if (data.type === "groupMessage") {
-//                     console.log(`📩 Group message from ${ws.username} in group ${data.groupId}: ${data.text}`);
-//                     // Save group message logic
-//                     // Broadcast group message logic
-//                 }
-//             } catch (error) {
-//                 console.error("⚠️ Error processing message:", error);
-//             }
-//         });
-
-//         ws.on("close", () => {
-//             setTimeout(() => {
-//                 delete onlineUsers[ws.username];
-//                 console.log(`🔴 User disconnected: ${ws.username}`);
-//                 broadcast({ type: "userList", users: Object.keys(onlineUsers) });
-//             }, 5000);
-//         });
-
-//     } catch (error) {
-//         console.log("❌ Invalid token, closing connection.");
-//         ws.close();
-//     }
-// });
-
-// function broadcast(data) {
-//     wss.clients.forEach(client => {
-//         if (client.readyState === WebSocket.OPEN) {
-//             client.send(JSON.stringify(data));
-//         }
-//     });
-// }
-
-// process.on("SIGINT", () => {
-//     console.log("⚠️ Shutting down WebSocket server...");
-//     wss.close();
-//     process.exit();
-// });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// const express = require("express");
-// const cors = require("cors");
-// const dotenv = require("dotenv");
-// const jwt = require("jsonwebtoken");
-// const userRoutes = require("./routes/userRoutes");
-// const chatRoutes = require("./routes/chatRoutes");
-// const groupRoutes = require("./routes/groupRoutes");
-// const { WebSocketServer, WebSocket } = require("ws"); // Import WebSocket
-// const chatController = require("./Controllers/chatController"); // Import chat controller
-
-// dotenv.config();
-// const SECRET_KEY = process.env.JWT_SECRET;
-// if (!SECRET_KEY) {
-//     console.error("❌ JWT_SECRET is missing in .env");
-//     process.exit(1);
-// }
-
-// const app = express();
-
-// // ✅ Secure CORS setup
-// const corsOptions = {
-//     origin: ["http://localhost:3000", "https://your-production-domain.com"],
-//     methods: "GET,POST,PUT,DELETE",
-//     allowedHeaders: "Content-Type,Authorization",
-//     credentials: true,
-// };
-// app.use(cors(corsOptions));
-// app.use(express.json());
-// app.use(express.static("public"));
-
-// // ✅ Define Routes
-// app.use("/api/auth", userRoutes);
-// app.use("/api/chat", chatRoutes);
-// app.use("/api/group", groupRoutes);
-
-// const server = app.listen(5000, () => {
-//     console.log(`🚀 Server running on port 5000`);
-// });
-
-// // ✅ Initialize WebSocket Server
-// const wss = new WebSocketServer({ server });
-// let onlineUsers = {}; // Use an object instead of an array
-
-// /// ✅ WebSocket Connection Handling
-// wss.on("connection", (ws, req) => {
-//     const queryString = req.url ? req.url.split("?")[1] : null;
-//     const urlParams = queryString ? new URLSearchParams(queryString) : new URLSearchParams();
-//     const token = urlParams.get("token");
-
-//     if (!token) {
-//         console.log("❌ No token provided, closing connection.");
-//         ws.close();
-//         return;
-//     }
-
-//     try {
-//         const decoded = jwt.verify(token, SECRET_KEY);
-//         ws.userId = Number(decoded.id);
-//         ws.username = decoded.username;
-
-//         onlineUsers[ws.username] = ws;
-//         console.log(`✅ User connected: ${ws.username}`);
-
-//         broadcast({ type: "userList", users: Object.keys(onlineUsers) });
-
-//         ws.on("message", async (message) => {
-//             try {
-//                 const data = JSON.parse(message);
-//                 if (!ws.userId) return console.error("❌ Missing userId, ignoring message.");
-
-//                 if (data.type === "message") {
-//                     console.log(`📩 Message from ${ws.username}: ${data.text}`);
-//                     const savedMessage = await chatController.saveMessage(ws.userId, data.text);
-//                     if (savedMessage) {
-//                         broadcast({
-//                             type: "message",
-//                             username: ws.username,
-//                             text: data.text
-//                         });
-//                     }
-//                 }
-//             } catch (error) {
-//                 console.error("⚠️ Error processing message:", error);
-//             }
-//         });
-
-//         ws.on("close", () => {
-//             setTimeout(() => {
-//                 delete onlineUsers[ws.username];
-//                 console.log(`🔴 User disconnected: ${ws.username}`);
-//                 broadcast({ type: "userList", users: Object.keys(onlineUsers) });
-//             }, 5000);
-//         });
-
-//     } catch (error) {
-//         console.log("❌ Invalid token, closing connection.");
-//         ws.close();
-//     }
-// });
-
-// // ✅ Function to Broadcast messages to all clients
-// function broadcast(data) {
-//     wss.clients.forEach(client => {
-//         if (client.readyState === WebSocket.OPEN) {
-//             client.send(JSON.stringify(data));
-//         }
-//     });
-// }
-
-// // ✅ Graceful Shutdown
-// process.on("SIGINT", () => {
-//     console.log("⚠️ Shutting down WebSocket server...");
-//     wss.close();
-//     process.exit();
-// });
+// cron job
+const cronTask = require("./utils/cronJob");
+cronTask.job.start();
+
+sequelize
+    // .sync({ force: true })
+    .sync()
+    .then((res) => {
+        server.listen(3000);
+        // app.listen(process.env.PORT || 3000);
+        console.log("Success 3000")
+    })
+    .catch((err) => console.log(err));

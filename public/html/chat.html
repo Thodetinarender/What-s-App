@@ -1,129 +1,470 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
-    
-    <!-- Bootstrap CSS -->
+    <title>Chat Groups & Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="/css/chat.css">
+    <script src="https://cdn.socket.io/4.4.1/socket.io.js"></script>
+
+    <style>
+        /* Main container for groups & chat */
+        .chat-container {
+            display: flex;
+            height: 80vh;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Left Side: Group List */
+        .group-list {
+            width: 30%;
+            background: #f8f9fa;
+            padding: 10px;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+
+        /* Right Side: Chat Room */
+        .chat-room {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            background: #ffffff;
+            position: relative;
+        }
+
+        /* Messages Area */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f1f1f1;
+        }
+
+        /* Input Area */
+        .input-group {
+            margin-top: 10px;
+        }
+
+        /* Hide chat by default */
+        .d-none {
+            display: none;
+        }
+
+        /* Admin Button (Top Right) */
+        .admin-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* Admin Section */
+        .admin-section {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+
+        #messages {
+            max-height: 400px;
+            /* Limit chat height */
+            overflow-y: auto;
+            /* Enable scrolling */
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .list-group-item {
+            border-radius: 20px;
+            padding: 10px 15px;
+            word-wrap: break-word;
+        }
+
+        .text-end {
+            align-self: flex-end;
+        }
+
+        .text-start {
+            align-self: flex-start;
+        }
+
+        .w-50 {
+            max-width: 60%;
+        }
+    </style>
 </head>
-<body class="bg-light">
 
-    <div class="container-fluid vh-100 d-flex">
-        <!-- Sidebar -->
-        <div class="col-md-3 bg-white p-3 border-end">
-            <h2 class="text-primary">Chat App</h2>
-            <p id="currentUser" class="fw-bold"></p>
+<body>
+    <div class="container mt-4">
+        <h2 class="text-center">Chat Groups</h2>
 
-            <!-- Online Users -->
-            <h5 class="mt-3">Online Users</h5>
-            <ul id="userList" class="list-group"></ul>
+        <!-- Flex Container for Sidebar & Chat -->
+        <div class="chat-container">
 
-            <!-- Group List -->
-            <h5 class="mt-3">Groups</h5>
-            <ul id="groupList" class="list-group"></ul>             
-
-            <!-- Create Group -->
-            <div class="mt-3">
-                <h5>Create Group</h5>
-                <div class="input-group">
-                    <input type="text" id="groupNameInput" class="form-control" placeholder="Group Name">
-                    <button id="createGroupBtn" class="btn btn-primary">Create</button>
-                </div>
+            <!-- Left Side: Group List -->
+            <div class="group-list">
+                <button class="btn btn-primary mb-3 w-100" onclick="createGroup()">Create New Group</button>
+                <ul id="groupList" class="list-group"></ul>
             </div>
 
-            <!-- Add Member -->
-            <!-- <div id="addMemberSection" class="mt-3 d-none">
-                <h5>Add Member to Group</h5>
-                <div class="input-group">
-                    <input type="text" id="memberIdInput" class="form-control" placeholder="User ID">
-                    <button id="addMemberBtn" class="btn btn-success">Add</button>
+            <!-- Right Side: Chat Room -->
+            <div id="chatRoom" class="chat-room d-none">
+                <!-- Chat Room Heading with Three-Dot Menu -->
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                    <h2 class="text-center flex-grow-1">Chat Room</h2>
+                    <button id="editGroupBtn" class="btn btn-info d-none" onclick="toggleAdminSection()">
+                        Edit Group
+                    </button>
                 </div>
-            </div>
-            <input type="hidden" id="selectedGroupId"> Hidden input to store selected group ID -->
-            <div id="addMemberSection" class="mt-3 d-none">
-                <h5>Add Member to Group</h5>
-                <div class="input-group">
-                    <input type="text" id="memberIdInput" class="form-control" placeholder="User ID">
-                    <button id="addMemberBtn" class="btn btn-success">Add</button>
+
+                <!-- Admin Section (Initially Hidden) -->
+                <div id="adminSection" class="mt-4 d-none">
+                    <h4>Admin Controls</h4>
+
+                    <!-- Add User -->
+                    <input type="text" id="addUserId" class="form-control mt-2" placeholder="User ID to Add">
+                    <button class="btn btn-success mt-2" onclick="addUserToGroup()">Add User</button>
+
+                    <!-- Remove User -->
+                    <input type="text" id="removeUserId" class="form-control mt-2" placeholder="User ID to Remove">
+                    <button class="btn btn-danger mt-2" onclick="removeUserFromGroup()">Remove User</button>
+
+                    <!-- Make Admin -->
+                    <input type="text" id="makeAdminId" class="form-control mt-2"
+                        placeholder="User ID to Promote to Admin">
+                    <button class="btn btn-info mt-2" onclick="makeAdmin()">Make Admin</button>
                 </div>
-            </div>
-            <input type="hidden" id="selectedGroupId">
 
-        </div>
 
-        <!-- Chat Area -->
-        <div class="col-md-9 d-flex flex-column p-3">
-            <h3 id="groupTitle" class="text-center text-primary">Group Chat</h3>
-
-            <!-- Chat Messages -->
-            <div id="messages" class="border rounded p-3 flex-grow-1 overflow-auto bg-white"></div>
-
-            <!-- Message Input -->
-            <div class="input-group mt-3">
-                <input type="text" id="messageInput" class="form-control" placeholder="Type a message...">
-                <button id="sendBtn" class="btn btn-success">Send</button>
+                <ul id="messages" class="list-group chat-messages"></ul>
+                <div class="input-group mt-3">
+                    <input type="text" id="messageInput" class="form-control" placeholder="Type a message...">
+                    <button class="btn btn-primary" id="sendBtn">Send</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Custom Script -->
-    <script src="/script/chat.js"></script>
     <script>
-        window.onload = () => {
-            document.getElementById("createGroupBtn").addEventListener("click", createGroup);
-            document.getElementById("addMemberBtn").addEventListener("click", addMember);
-            document.getElementById("sendBtn").addEventListener("click", sendGroupMessage);
-            loadGroups();
-        };
+        const API_BASE = "http://localhost:3000";
+        const socket = io(API_BASE, { transports: ["websocket", "polling"] });
+
+        socket.on("connect", () => console.log("Connected to WebSocket ✅"));
+        socket.on("disconnect", () => console.log("Disconnected ❌"));
+
+        socket.on("room message", (data) => {
+            const groupId = localStorage.getItem("currentGroup");
+            const userId = localStorage.getItem("userId");
+
+            if (data.groupId == groupId) {
+                const messageList = document.getElementById("messages");
+                const li = document.createElement("li");
+                li.classList.add("list-group-item", "my-1", "p-2", "rounded", "w-50");
+
+                // Check if the message is from the current user or another user
+                if (data.userId == userId) {
+                    li.classList.add("text-end", "bg-primary", "text-white", "ms-auto");
+                    li.innerHTML = `<strong>You:</strong> ${data.content}`;
+                } else {
+                    li.classList.add("text-start", "bg-light");
+                    li.innerHTML = `<strong>User ${data.userId}:</strong> ${data.content}`;
+                }
+
+                messageList.appendChild(li);
+
+                // Auto-scroll to the latest message
+                messageList.scrollTop = messageList.scrollHeight;
+            }
+        });
+
+
+
+        document.getElementById("sendBtn").addEventListener("click", sendMessage);
+
+        async function sendMessage() {
+            const message = document.getElementById("messageInput").value;
+            if (!message) return;
+
+            const groupId = localStorage.getItem("currentGroup");
+            const token = localStorage.getItem("token");
+            const userId = localStorage.getItem("userId");
+
+            const response = await fetch(`${API_BASE}/message/add`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": token
+                },
+                body: JSON.stringify({ message, grpId: groupId })
+            });
+
+            if (response.ok) {
+                // Emit message to WebSocket
+                socket.emit("send message", { userId, content: message, groupId });
+
+                // Show the sent message instantly
+                const messageList = document.getElementById("messages");
+                const li = document.createElement("li");
+                li.classList.add("list-group-item", "my-1", "p-2", "rounded", "text-end", "bg-primary", "text-white", "ms-auto", "w-50");
+                li.innerHTML = `<strong>You:</strong> ${message}`;
+                messageList.appendChild(li);
+
+                // Clear input field
+                document.getElementById("messageInput").value = "";
+
+                // Auto-scroll to the latest message
+                messageList.scrollTop = messageList.scrollHeight;
+            } else {
+                alert("Failed to send message");
+            }
+        }
+
+
+
+        async function fetchGroups() {
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE}/message`, {
+                    headers: { "Authorization": token }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const groupList = document.getElementById("groupList");
+                groupList.innerHTML = "";
+
+                data.data.forEach(group => {
+                    const li = document.createElement("li");
+                    li.classList.add("list-group-item");
+                    li.innerHTML = `<strong>${group.name}</strong> - ${group.description} 
+                    <button class="btn btn-success btn-sm float-end" onclick="joinGroup(${group.id})">Join</button>`;
+                    groupList.appendChild(li);
+                });
+            } catch (error) {
+                console.error("Error fetching groups:", error);
+                alert("Failed to fetch groups. Check server.");
+            }
+        }
+
+        async function createGroup() {
+            const grpName = prompt("Enter Group Name:");
+            const desc = prompt("Enter Group Description:");
+            if (!grpName || !desc) return;
+
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE}/group/add`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": token,
+                },
+                body: JSON.stringify({ grpName, desc })
+            });
+
+            if (response.ok) {
+                fetchGroups();
+            } else {
+                alert("Failed to create group.");
+            }
+        }
+
+        async function joinGroup(id) {
+            localStorage.setItem("currentGroup", id);
+            document.getElementById("chatRoom").classList.remove("d-none");
+            try {
+                const isAdmin = await checkIfAdmin(id); // Ensure function is awaited inside an async function
+                const editBtn = document.getElementById("editGroupBtn");
+
+                if (isAdmin) {
+                    editBtn.classList.remove("d-none"); // Show Edit Button for Admins
+                } else {
+                    editBtn.classList.add("d-none"); // Hide for Non-Admins
+                }
+
+                fetchGroupMessages(id);
+            } catch (error) {
+                console.error("Error joining group:", error);
+            }
+            fetchGroupMessages(id);
+        }
+
+        async function checkIfAdmin(groupId) {
+            const token = localStorage.getItem("token");
+
+            try {
+                const response = await fetch(`${API_BASE}/group/${groupId}/is-admin`, {
+                    headers: { "Authorization": token }
+                });
+
+                if (!response.ok) throw new Error("Failed to check admin status");
+
+                const data = await response.json();
+                return data.isAdmin; // Return true if user is an admin
+            } catch (error) {
+                console.error("Error checking admin status:", error);
+                return false;
+            }
+        }
+
+
+
+        async function fetchGroupMessages(groupId) {
+            try {
+                const token = localStorage.getItem("token");
+                const userId = localStorage.getItem("userId"); // Get current user ID
+
+                const response = await fetch(`${API_BASE}/message/${groupId}`, {
+                    headers: { "Authorization": token }
+                });
+
+                if (!response.ok) throw new Error("Failed to fetch messages");
+
+                const messages = await response.json();
+                const messageList = document.getElementById("messages");
+                messageList.innerHTML = "";
+
+                // Reverse messages to show latest at the bottom
+                messages.reverse().forEach(msg => {
+                    const li = document.createElement("li");
+                    li.classList.add("list-group-item", "my-1", "p-2", "rounded");
+
+                    // Check if the message was sent by the current user
+                    if (msg.userId == userId) {
+                        li.classList.add("text-end", "bg-primary", "text-white", "ms-auto", "w-50");
+                    } else {
+                        li.classList.add("text-start", "bg-light", "w-50");
+                    }
+
+                    li.innerHTML = `<strong>${msg.userId == userId ? "You" : "User " + msg.userId}:</strong> ${msg.content}`;
+                    messageList.appendChild(li);
+                });
+
+                // Auto-scroll to the latest message
+                messageList.scrollTop = messageList.scrollHeight;
+            } catch (error) {
+                console.error("Error fetching messages:", error);
+            }
+        }
+
+
+
+
+
+
+
+        function toggleAdminSection() {
+            document.getElementById("adminSection").classList.toggle("d-none");
+        }
+
+
+        async function makeAdmin() {
+    const userIdInput = document.getElementById("makeAdminId"); // Get correct input field
+    if (!userIdInput) {
+        alert("Admin input field not found!");
+        return;
+    }
+
+    const userId = userIdInput.value;
+    const grpId = localStorage.getItem("currentGroup");
+
+    if (!userId) return alert("Enter User ID");
+
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE}/group/${grpId}/make-admin`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": token
+        },
+        body: JSON.stringify({ userId, grpId })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        alert(data.message || "User promoted to Admin");
+
+        // 🔥 Refresh Admin Status after Promotion
+        checkIfAdmin(grpId).then(isAdmin => {
+            if (isAdmin) {
+                document.getElementById("editGroupBtn").classList.remove("d-none"); // Show Edit Group button
+            }
+        });
+
+        // 🔥 Update User List to Reflect Admin Status
+        //fetchGroupMembers();
+    } else {
+        alert(data.message || "Failed to make user an admin.");
+    }
+}
+
+
+
+        async function addUserToGroup() {
+            const userId = document.getElementById("addUserId").value;
+            const grpId = localStorage.getItem("currentGroup");
+            if (!userId) return alert("Enter User ID");
+
+            const token = localStorage.getItem("token");
+
+            const response = await fetch(`${API_BASE}/group/${grpId}/add-user`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": token
+                },
+                body: JSON.stringify({ userId, grpId })
+            });
+
+            if (response.ok) {
+                alert("User added successfully!");
+            } else {
+                alert("Failed to add user.");
+            }
+        }
+
+
+        async function removeUserFromGroup() {
+            const userId = document.getElementById("removeUserId").value;
+            const grpId = localStorage.getItem("currentGroup");
+            if (!userId) return alert("Enter User ID");
+
+            const token = localStorage.getItem("token");
+
+            const response = await fetch(`${API_BASE}/group/${grpId}/remove-user`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": token
+                },
+                body: JSON.stringify({ userId, grpId })
+            });
+
+            if (response.ok) {
+                alert("User removed successfully!");
+            } else {
+                alert("Failed to remove user.");
+            }
+        }
+
+
+        fetchGroups();
     </script>
 </body>
+
 </html>
-
-
-
-
-
-
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
-    <link rel="stylesheet" href="/css/chat.css">
-</head>
-<body>
-    <h2>Chat App</h2>
-    <p id="currentUser"></p>
-    <h3>Online Users:</h3>
-    <ul id="userList"></ul>
-
-    <div id="chatWindow">
-        <div id="messages"></div>
-        <input type="text" id="messageInput" placeholder="Type a message..." />
-        <button id="sendBtn">Send</button>  <!-- Change from onclick -->
-    <!-- </div> -->
-
-    <!-- ✅ Ensure chat.js loads properly -->
-    <!-- <script src="/script/chat.js"></script> -->
-
-    <!-- ✅ Attach event listener to the button after loading chat.js -->
-    <!-- <script>
-        document.getElementById("sendBtn").addEventListener("click", sendMessage);
-    </script> -->
-<!-- </body>
-</html> -->
-
-
- 

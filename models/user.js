@@ -1,10 +1,11 @@
-const Sequelize = require('sequelize');
-const sequelize = require('../utils/database');
+const Sequelize = require("sequelize");
 
-// Define User Model
+const sequelize = require("../utils/database");
+
 const User = sequelize.define("user", {
     id: {
         type: Sequelize.INTEGER,
+        allowNull: false,
         autoIncrement: true,
         primaryKey: true,
     },
@@ -25,13 +26,7 @@ const User = sequelize.define("user", {
     password: {
         type: Sequelize.STRING,
         allowNull: false,
-    }
-}, { timestamps: true });
-
-// Sync Model with Database
-(async () => {
-    await sequelize.sync();
-    console.log("User table synced!");
-})();
+    },
+});
 
 module.exports = User;
